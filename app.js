@@ -14,8 +14,14 @@ function loadServers(filePath) {
         .split('\n')
         .filter(line => line.trim() && !line.startsWith('#'))
         .map(line => {
-            const [name, ip, port, url] = line.split(',').map(s => s.trim());
-            return { name, ip, port: parseInt(port), url };
+            const [name, ip, port, url, interval] = line.split(',').map(s => s.trim());
+            return { name,
+                     ip,
+                     port: parseInt(port),
+                     url,
+                     interval: parseInt(interval) || 60, 
+                     online: false, 
+                     lastChecked: 0 };
         });
 }
 
@@ -37,12 +43,22 @@ function isHostUp(ip, port, timeout = 1000) {
     });
 }
 
+function updateServiceStatusLoop(){
+    setInterval(async ()=>{
+        const now = Date.now();
+        for (const s of SERVICES){
+            if (now-s.lastChecked >= s.interval*1000){
+                s.online = await isHostUp(s.ip, s.port);
+                s.lastChecked = now;
+            }
+        }
+    }, 1000);
+}
+
+updateServiceStatusLoop();
+
 app.get('/', async (req, res) => {
-    const status = await Promise.all(SERVICES.map(async (s) => ({
-        ...s,
-        online: await isHostUp(s.ip, s.port)
-    })));
-    res.render('index', { services: status });
+    res.render('index', { services: SERVICES });
 });
 
 const url = require('url');
@@ -99,7 +115,7 @@ app.get('/check/mqtt', (req, res) => {
     });
 });
 
-app.listen(8080, 'YOUR_IP', () => {
+app.listen(8090, '192.168.1.16', () => {
     console.log('Internal Portal running at http://YOUR_IP');
 });
 
