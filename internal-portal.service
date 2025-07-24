@@ -1,0 +1,15 @@
+[Unit]
+Description=Internal Portal Dockerized Node service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/opt/internal-portal/start.sh &
+ExecStop=pkill start.sh
+WorkingDirectory=/opt/internal-portal
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
