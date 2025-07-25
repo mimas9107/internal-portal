@@ -18,17 +18,23 @@
         </thead>
         <tbody>
         <% services.forEach(function(s) { %>
-            <tr>
+            <tr id="service-<%= s.name %>" class="service-row">
                 <td><%= s.name %></td>
                 <td>
+                    <span class="status">
                     <% if (s.online) { %>
                         <span class="status-online">🟢 Online</span>
                     <% } else { %>
                         <span class="status-offline">🔴 Offline</span>
                     <% } %>
+                    </span>
                 </td>
-                <td>
-                    <%= Math.round((Date.now()-s.lastChecked)/1000) %> 秒前 
+                <td class="last-checked">
+                    <% if(s.lastChecked === null){ %>
+                        尚未檢查
+                    <% } else { %>
+                        <%= Math.round((Date.now()-s.lastChecked)/1000) %> 秒前
+                    <% } %>
                 </td>
                 <td>
                     <% if (s.online && s.url.startsWith('/check/')) { %>
@@ -45,6 +51,42 @@
         <% }); %>
         </tbody>
     </table>
+
+    <!-- Step 3: 動態更新腳本區塊 -->
+    <script>
+        const serviceNames = <%- JSON.stringify(services.map(s => s.name)) %>;
+
+        function updateService(name) {
+            fetch(`/api/service/${name}`)
+                .then(res => res.json())
+                .then(data => {
+                    const row = document.getElementById(`service-${data.name}`);
+                    if (!row) return;
+
+                    const statusTd = row.querySelector('.status');
+                    const lastCheckedTd = row.querySelector('.last-checked');
+
+                    // 狀態圖示（Online/Offline）
+                    statusTd.innerHTML = data.online
+                        ? '<span class="status-online">🟢 Online</span>'
+                        : '<span class="status-offline">🔴 Offline</span>';
+
+                    // 秒數顯示
+                    if (data.lastChecked) {
+                        const secondsAgo = Math.round((Date.now() - data.lastChecked) / 1000);
+                        lastCheckedTd.textContent = `${secondsAgo} 秒前`;
+                    } else {
+                        lastCheckedTd.textContent = '尚未檢查';
+                    }
+                })
+                .catch(err => console.error('更新失敗:', name, err));
+        }
+
+        // 每 1 秒刷新一次所有服務（之後可自訂每項頻率）
+        setInterval(() => {
+            serviceNames.forEach(updateService);
+        }, 1000);
+    </script>
 </body>
 </html>
 

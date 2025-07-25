@@ -1,6 +1,7 @@
 # Internal Portal
 
-一個基於 Node.js 與 EJS 模板引擎，提供內部家庭網路設備入口頁的輕量專案。能夠動態顯示設備是否在線，並提供快速管理連結。
+一個基於 Node.js 與 EJS 模板引擎，提供內部家庭網路設備入口頁的輕量專案。
+能夠動態顯示設備是否在線，並提供快速管理連結。
 
 ## 1. 專案目標
 
@@ -191,4 +192,168 @@ Jul 24 11:32:10 raspberrypi4 start.sh[56837]: Internal Portal running at http://
 * 支援設備分類顯示（如音響 / NAS / 其他區網內服務）
 * 改用 WebSocket 定期自動刷新狀態
 * 美化 UI，增加登入驗證等安全性
+
+--- 
+## 8. 🔧 新版技術改進重點
+
+### 8.1 🌐 支援非同步/多執行序設備掃描
+
+* 改以非同步 Promise.allsettled 併發掃描設備狀態統一收合，大幅減少渲染延遲。
+
+* 單次掃描耗時由數秒縮短。
+
+* 後端提供單一服務狀態查詢 API `/api/service/:name`
+```js
+app.get('/api/service/:name', (req, res) => {
+    const s = SERVICES.find(x => x.name === req.params.name);
+    if (!s) return res.status(404).json({ error: 'Service not found' });
+
+    res.json({
+        name: s.name,
+        ip: s.ip,
+        port: s.port,
+        online: s.online,
+        lastChecked: s.lastChecked,
+    });
+});
+
+```
+
+### 8.2 ✅ 增加連線穩定判斷細節
+
+* 明確設定 TCP socket.setTimeout(1000)，避免 hang 住。
+
+* 明確區分 connect 成功與 connect timeout / error。
+
+### 8.3 🧱 前端顯示層邏輯強化
+* EJS 初版畫面建構
+
+    使用 EJS 模板渲染出服務狀態表格
+
+    每列顯示服務名稱、狀態、檢查時間、管理連結
+
+
+* 前端定義每個服務 <tr> 唯一標識
+
+    給每個服務列 <tr id="service-服務名稱">
+
+    加上 .status、.last-checked 等子元素 class，便於更新
+
+* 加入前端 JS 動態更新
+
+    自動每秒輪詢每個服務 /api/service/:name 狀態
+
+    若有變化，只更新對應那一列 <tr> 的內容（非整頁刷新）
+
+    顯示幾秒前更新，使用 lastChecked 計算時間差
+
+* 前端範本 views/index.ejs :
+```html
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <title>Internal Portal</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+    <h1>Internal Portal</h1>
+    <table>
+        <thead>
+            <tr>
+                <th>服務</th>
+                <th>狀態</th>
+                <th>上次檢查</th>
+                <th>管理</th>
+            </tr>
+        </thead>
+        <tbody>
+        <% services.forEach(function(s) { %>
+            <tr id="service-<%= s.name %>" class="service-row">
+                <td><%= s.name %></td>
+                <td>
+                    <span class="status">
+                    <% if (s.online) { %>
+                        <span class="status-online">🟢 Online</span>
+                    <% } else { %>
+                        <span class="status-offline">🔴 Offline</span>
+                    <% } %>
+                    </span>
+                </td>
+                <td class="last-checked">
+                    <% if(s.lastChecked === null){ %>
+                        尚未檢查
+                    <% } else { %>
+                        <%= Math.round((Date.now()-s.lastChecked)/1000) %> 秒前
+                    <% } %>
+                </td>
+                <td>
+                    <% if (s.online && s.url.startsWith('/check/')) { %>
+                        <a href="<%= s.url %>" class="button button-online">測試</a>
+                    <% } else if (s.online && s.url !== '-') { %>
+                        <a href="<%= s.url %>" target="_blank" class="button button-online">前往</a>
+                    <% } else if (s.url === '-') { %>
+                        <span style="color:gray">無管理頁面</span>
+                    <% } else { %>
+                        <button class="button button-offline" disabled>無法連線</button>
+                    <% } %>
+                </td>
+            </tr>
+        <% }); %>
+        </tbody>
+    </table>
+
+    <!-- Step 3: 動態更新腳本區塊 -->
+    <script>
+        const serviceNames = <%- JSON.stringify(services.map(s => s.name)) %>;
+
+        function updateService(name) {
+            fetch(`/api/service/${name}`)
+                .then(res => res.json())
+                .then(data => {
+                    const row = document.getElementById(`service-${data.name}`);
+                    if (!row) return;
+
+                    const statusTd = row.querySelector('.status');
+                    const lastCheckedTd = row.querySelector('.last-checked');
+
+                    // 狀態圖示（Online/Offline）
+                    statusTd.innerHTML = data.online
+                        ? '<span class="status-online">🟢 Online</span>'
+                        : '<span class="status-offline">🔴 Offline</span>';
+
+                    // 秒數顯示
+                    if (data.lastChecked) {
+                        const secondsAgo = Math.round((Date.now() - data.lastChecked) / 1000);
+                        lastCheckedTd.textContent = `${secondsAgo} 秒前`;
+                    } else {
+                        lastCheckedTd.textContent = '尚未檢查';
+                    }
+                })
+                .catch(err => console.error('更新失敗:', name, err));
+        }
+
+        // 每 1 秒刷新一次所有服務（之後可自訂每項頻率）
+        setInterval(() => {
+            serviceNames.forEach(updateService);
+        }, 1000);
+    </script>
+</body>
+</html>
+
+
+```
+--- 
+## Milestone table
+| 階段 | 項目                | 描述                          | 狀態        |
+| -- | ----------------- | --------------------------- | --------- |
+| M1 | 基礎 Node/EJS 搭建    | 完成基本入口頁架構與 EJS 模板渲染         | ✅ 已完成     |
+| M2 | TCP 掃描功能          | 加入設備狀態判斷（socket 連線檢查）       | ✅ 已完成     |
+| M3 | 設備外部設定管理          | 引入 `servers.list` 外部檔案解析    | ✅ 已完成     |
+| M4 | CSS 樣式與 UI 顯示邏輯   | 線上／離線顏色與按鈕狀態區別              | ✅ 已完成     |
+| M5 | 啟動腳本與 systemd 整合  | `start.sh` 腳本與 `systemd` 配置 | ✅ 已完成     |
+| M6 | ⚡ 效能最佳化           | 引入 async 扫描、非同步 socket 處理   | ✅ 本次核心更新  |
+| M7 | 💡 開發者偵錯機制        | 加入掃描耗時記錄、個別失敗提示             | ✅ 本次核心更新  |
+| M8 | 🧩 可維護性提升         | 程式結構整理，方便未來分類擴充             | ✅ 已納入設計考量 |
+| M9 | 📝 README 整理與技術文檔 | 撰寫本篇說明，更新至此里程碑              | ✅ 此項      |
 

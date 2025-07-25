@@ -7,6 +7,22 @@ const app = express();
 
 app.set('view engine', 'ejs');
 app.use(express.static('public'));
+// read .env
+function loadEnv(envpath){
+    const raw = fs.readFileSync(envpath,'utf-8');
+    console.log('DEBUG [loadEnv]'+raw);
+    return raw
+        .split('\n')
+        .filter(line=>line.trim() && !line.startsWith('#'))
+        .map(line =>{
+            const [serverid, serverip, serverport] = line.split(',').map(s=>s.trim());
+            return {
+                serverid,
+                serverip,
+                serverport,
+            }
+        });
+}
 
 function loadServers(filePath) {
     const raw = fs.readFileSync(filePath, 'utf-8');
@@ -21,7 +37,7 @@ function loadServers(filePath) {
                      url,
                      interval: parseInt(interval) || 60, 
                      online: false, 
-                     lastChecked: 0 };
+                     lastChecked: null };
         });
 }
 
@@ -46,12 +62,22 @@ function isHostUp(ip, port, timeout = 1000) {
 function updateServiceStatusLoop(){
     setInterval(async ()=>{
         const now = Date.now();
-        for (const s of SERVICES){
-            if (now-s.lastChecked >= s.interval*1000){
-                s.online = await isHostUp(s.ip, s.port);
-                s.lastChecked = now;
+        const tasks = SERVICES.map(async (s)=>{
+            //console.log('Debug [ updateServiceStatusLoop() ] now='+now+', s.lastChecked='+s.lastChecked);
+            if(now-s.lastChecked >= s.interval * 1000){
+                try{
+                    s.online = await isHostUp(s.ip, s.port);
+                }
+                catch(err){
+                    console.error('[error] ${s.name} cant check:',err.message);
+                    s.online = false;
+                }
+                finally{
+                    s.lastChecked = Date.now();
+                }
             }
-        }
+        });
+        await Promise.allSettled(tasks);    
     }, 1000);
 }
 
@@ -59,32 +85,23 @@ updateServiceStatusLoop();
 
 app.get('/', async (req, res) => {
     res.render('index', { services: SERVICES });
+
 });
 
 const url = require('url');
 
 app.get('/check/mqtt', (req, res) => {
     const mqttEntry = SERVICES.find(s=>s.url.startsWith('/check/mqtt'));
-
-
-
     const brokerIp = mqttEntry?.ip || '127.0.0.1';
-    const brokerPort = mqttEntry?.port || 1883;
-    
+    const brokerPort = mqttEntry?.port || 1883;    
     const parsedUrl = url.parse(mqttEntry?.url || '', true);
-
-    const mqttUrl = `mqtt://${brokerIp}:${brokerPort}`;
-
-    
+    const mqttUrl = `mqtt://${brokerIp}:${brokerPort}`;    
     const options = {};
     if(parsedUrl.query.user && parsedUrl.query.pass){
         options.username = parsedUrl.query.user;
         options.password = parsedUrl.query.pass;
-    }
-    
+    }    
     const client = mqtt.connect(mqttUrl, options);
-
-
     client.on('connect', () => {
         client.publish('internal/portal/test', 'ping', (err) => {
             client.end();
@@ -115,7 +132,25 @@ app.get('/check/mqtt', (req, res) => {
     });
 });
 
-app.listen(8090, '192.168.1.16', () => {
-    console.log('Internal Portal running at http://YOUR_IP');
+// 後端提供單一服務狀態查詢 API
+app.get('/api/service/:name', (req, res)=>{
+    const s = SERVICES.find(x=> x.name === req.params.name );
+    if(!s) return res.status(404).json({error: 'Service not found'});
+    res.json({
+        name: s.name,
+        ip: s.ip,
+        port: s.port,
+        online: s.online,
+        lastChecked: s.lastChecked,
+    });
+});
+
+
+
+const SERVERENV=loadEnv(path.join(__dirname,'.env'));
+console.log(SERVERENV);
+// 以 loadEnv載入環境變數，便於修改移轉主機:
+app.listen(SERVERENV[0].serverport, SERVERENV[0].serverip, () => {
+    console.log('Internal Portal '+SERVERENV[0].serverid+' running at http://'+SERVERENV[0].serverip+':'+SERVERENV[0].serverport);
 });
 
