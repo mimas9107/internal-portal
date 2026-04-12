@@ -2,59 +2,104 @@
 <html lang="zh-TW">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Internal Portal</title>
     <link rel="stylesheet" href="/style.css">
+    <script>
+        // 在頁面渲染前先套用主題，避免閃爍
+        (function() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            document.documentElement.setAttribute('data-theme', savedTheme);
+        })();
+    </script>
 </head>
 <body>
-    <h1>Internal Portal</h1>
-    <table>
-        <thead>
-            <tr>
-                <th>服務</th>
-                <th>狀態</th>
-                <th>上次檢查</th>
-                <th>管理</th>
-            </tr>
-        </thead>
-        <tbody>
-        <% services.forEach(function(s) { %>
-            <tr id="service-<%= s.name %>" class="service-row">
-                <td><%= s.name %></td>
-                <td>
-                    <span class="status">
-                    <% if (s.online) { %>
-                        <span class="status-online">🟢 Online</span>
-                    <% } else { %>
-                        <span class="status-offline">🔴 Offline</span>
-                    <% } %>
-                    </span>
-                </td>
-                <td class="last-checked">
-                    <% if(s.lastChecked === null){ %>
-                        尚未檢查
-                    <% } else { %>
-                        <%= Math.round((Date.now()-s.lastChecked)/1000) %> 秒前
-                    <% } %>
-                </td>
-                <td class="manage">
-                    <% if (s.online && s.url.startsWith('/check/')) { %>
-                        <a href="<%= s.url %>" class="button button-online">測試</a>
-                    <% } else if (s.online && s.url !== '-') { %>
-                        <a href="<%= s.url %>" target="_blank" class="button button-online">前往</a>
-                    <% } else if (s.url === '-') { %>
-                        <span style="color:gray">無管理頁面</span>
-                    <% } else { %>
-                        <button class="button button-offline" disabled>無法連線</button>
-                    <% } %>
-                </td>
-            </tr>
-        <% }); %>
-        </tbody>
-    </table>
+    <div class="container">
+        <header>
+            <h1>Internal Portal</h1>
+            <button id="theme-toggle" aria-label="切換主題">
+                <span id="theme-icon">🌙</span>
+                <span id="theme-text">深色模式</span>
+            </button>
+        </header>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>服務名稱</th>
+                    <th>目前狀態</th>
+                    <th>上次檢查</th>
+                    <th>管理操作</th>
+                </tr>
+            </thead>
+            <tbody>
+            <% services.forEach(function(s) { %>
+                <tr id="service-<%= s.name %>" class="service-row">
+                    <td><%= s.name %></td>
+                    <td>
+                        <span class="status">
+                        <% if (s.online) { %>
+                            <span class="status-online">🟢 Online</span>
+                        <% } else { %>
+                            <span class="status-offline">🔴 Offline</span>
+                        <% } %>
+                        </span>
+                    </td>
+                    <td class="last-checked">
+                        <% if(s.lastChecked === null){ %>
+                            尚未檢查
+                        <% } else { %>
+                            <%= Math.round((Date.now()-s.lastChecked)/1000) %> 秒前
+                        <% } %>
+                    </td>
+                    <td class="manage">
+                        <% if (s.online && s.url.startsWith('/check/')) { %>
+                            <a href="<%= s.url %>" class="button button-online">測試</a>
+                        <% } else if (s.online && s.url !== '-') { %>
+                            <a href="<%= s.url %>" target="_blank" class="button button-online">前往</a>
+                        <% } else if (s.url === '-') { %>
+                            <span>無管理頁面</span>
+                        <% } else { %>
+                            <button class="button button-offline" disabled>無法連線</button>
+                        <% } %>
+                    </td>
+                </tr>
+            <% }); %>
+            </tbody>
+        </table>
+    </div>
 
     <script>
         const serviceNames = <%- JSON.stringify(services.map(s => s.name)) %>;
 
+        // 主題切換邏輯
+        const themeToggle = document.getElementById('theme-toggle');
+        const themeIcon = document.getElementById('theme-icon');
+        const themeText = document.getElementById('theme-text');
+
+        function updateThemeUI(theme) {
+            if (theme === 'dark') {
+                themeIcon.textContent = '☀️';
+                themeText.textContent = '亮色模式';
+            } else {
+                themeIcon.textContent = '🌙';
+                themeText.textContent = '深色模式';
+            }
+        }
+
+        // 初始化 UI 狀態
+        updateThemeUI(localStorage.getItem('theme') || 'light');
+
+        themeToggle.addEventListener('click', () => {
+            let currentTheme = document.documentElement.getAttribute('data-theme');
+            let newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            
+            document.documentElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeUI(newTheme);
+        });
+
+        // 原有的更新服務邏輯
         function updateService(name) {
             fetch(`/api/service/${name}`)
                 .then(res => res.json())
@@ -87,7 +132,7 @@
                         } else if (data.online && url !== '-') {
                             manageTd.innerHTML = `<a href="${url}" target="_blank" class="button button-online">前往</a>`;
                         } else if (url === '-') {
-                            manageTd.innerHTML = `<span style="color:gray">無管理頁面</span>`;
+                            manageTd.innerHTML = `<span>無管理頁面</span>`;
                         } else {
                             manageTd.innerHTML = `<button class="button button-offline" disabled>無法連線</button>`;
                         }
@@ -102,4 +147,3 @@
     </script>
 </body>
 </html>
-
