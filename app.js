@@ -140,6 +140,7 @@ app.get('/api/service/:name', (req, res)=>{
         name: s.name,
         ip: s.ip,
         port: s.port,
+        url: s.url,
         online: s.online,
         lastChecked: s.lastChecked,
     });

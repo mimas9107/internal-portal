@@ -81,11 +81,12 @@
 
                     // 更新管理按鈕
                     if (manageTd) {
-                        if (data.online && data.url.startsWith('/check/')) {
-                            manageTd.innerHTML = `<a href="${data.url}" class="button button-online">測試</a>`;
-                        } else if (data.online && data.url !== '-') {
-                            manageTd.innerHTML = `<a href="${data.url}" target="_blank" class="button button-online">前往</a>`;
-                        } else if (data.url === '-') {
+                        const url = data.url || '';
+                        if (data.online && url.startsWith('/check/')) {
+                            manageTd.innerHTML = `<a href="${url}" class="button button-online">測試</a>`;
+                        } else if (data.online && url !== '-') {
+                            manageTd.innerHTML = `<a href="${url}" target="_blank" class="button button-online">前往</a>`;
+                        } else if (url === '-') {
                             manageTd.innerHTML = `<span style="color:gray">無管理頁面</span>`;
                         } else {
                             manageTd.innerHTML = `<button class="button button-offline" disabled>無法連線</button>`;
