@@ -1,3 +1,12 @@
+---
+name:          "README.md"
+description:   "Internal Portal - Home network device dashboard."
+created_date:  "2026/06/18 10:00:00"
+modified_date: "2026/06/18 10:00:00"
+project_version: "1.1.0"
+document_version: "1.0.0"
+agent_sign: ['gemini cli/current_agent']
+---
 # Internal Portal
 
 一個基於 Node.js 與 EJS 模板引擎，提供內部家庭網路設備入口頁的輕量專案。
